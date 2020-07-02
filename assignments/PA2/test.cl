@@ -2,6 +2,17 @@
    arrays are faked as Strings,
    X's respresent live cells, dots represent dead cells,
    no error checking is done *)
+(* * (* block comment *) * *)
+(* (* block comment 
+      ** * new line *) *)
+-- line comment (* -- line comment *)
+
+class StringTest {
+    s1 : String <- "abc123\
+                def456";
+    s2 : String <- "Unterminated string constant;
+}
+
 class CellularAutomaton inherits IO {
     population_map : String;
    

@@ -57,7 +57,7 @@ DARROW          =>
 ASSIGN          <-
 LE              <=
 
-CLASS           class
+CLASS           [cC]lass
 IF              if
 THEN            then
 ELSE            else
@@ -76,13 +76,13 @@ ISVOID          isvoid
 NOT             not
 
 INT_CONST       [0-9]+
-BOOL_CONST      (true|false)
+BOOL_CONST      (t[rR][uU][eE]|f[aA][lL][sS][eE])
 
 TYPEID          ([A-Z][a-zA-Z0-9_]*)
 OBJECTID        ([a-z][a-zA-Z0-9_]*)
 
 WHITE_SPACE     ([ \f\r\t\v]+)
-OPERATOR        ([+\-*/{}():;,.@~<>=])
+OPERATOR        ([+\-*/{}():;,.@~<=])
 
 %%
 
@@ -94,7 +94,8 @@ OPERATOR        ([+\-*/{}():;,.@~<>=])
 <LINE_COMMENT>.   { }
 
 \(\*                          { BEGIN(BLOCK_COMMENT); nested++; }
-<BLOCK_COMMENT>[^*\(\n]*      { /* eat anything that's not '*' or '\n' */ }
+\*\)                          { strcpy(cool_yylval.error_msg, "Unmatched *)"); return (ERROR); }
+<BLOCK_COMMENT>[^*(\n]*      { /* eat anything that's not '*' or '\n' */ }
 <BLOCK_COMMENT>\n             { curr_lineno++; }
 <BLOCK_COMMENT>\(\*           { nested++; }
 <BLOCK_COMMENT>\*\)           { nested--; if (nested == 0) { BEGIN(INITIAL); } }
@@ -129,6 +130,7 @@ OPERATOR        ([+\-*/{}():;,.@~<>=])
 {LOOP}      { return (LOOP); } 
 {POOL}      { return (POOL); } 
 {OF}        { return (OF); } 
+{CASE}      { return (CASE); } 
 {ESAC}      { return (ESAC); } 
 {NEW}       { return (NEW); } 
 {ISVOID}    { return (ISVOID); } 
@@ -155,6 +157,8 @@ OPERATOR        ([+\-*/{}():;,.@~<>=])
 <STRING>\\b   { *string_buf_ptr++ = '\b'; }
 <STRING>\\f   { *string_buf_ptr++ = '\f'; }
 <STRING>\\n   { *string_buf_ptr++ = '\n'; }
+<STRING>\\\\  { *string_buf_ptr++ = '\\'; }
+<STRING>\\\"  { *string_buf_ptr++ = '\"'; }
 <STRING>\\\n  { *string_buf_ptr++ = '\n'; curr_lineno++; }
 <STRING>\n    {
   BEGIN(INITIAL);
@@ -186,7 +190,13 @@ OPERATOR        ([+\-*/{}():;,.@~<>=])
   cool_yylval.symbol = inttable.add_string(yytext);
   return (INT_CONST);
 }
-{BOOL_CONST} { return (BOOL_CONST); }
+{BOOL_CONST} {
+  if (yytext[0] == 't')
+    cool_yylval.boolean = 1;
+  else
+    cool_yylval.boolean = 0;
+
+  return (BOOL_CONST); }
 
 {WHITE_SPACE} { /* ignore white space */ }
 

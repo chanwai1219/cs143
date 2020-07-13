@@ -35,6 +35,11 @@ class Class__class : public tree_node {
 public:
    tree_node *copy()		 { return copy_Class_(); }
    virtual Class_ copy_Class_() = 0;
+   virtual void semant() = 0;
+
+   virtual Symbol get_name() = 0;
+   virtual Symbol get_parent() = 0;
+   virtual Features get_features() = 0;
 
 #ifdef Class__EXTRAS
    Class__EXTRAS
@@ -46,9 +51,20 @@ public:
 typedef class Feature_class *Feature;
 
 class Feature_class : public tree_node {
+protected:
+   Symbol class_;
+
 public:
    tree_node *copy()		 { return copy_Feature(); }
    virtual Feature copy_Feature() = 0;
+   virtual void semant() = 0;
+
+   virtual Symbol get_name() = 0;
+   virtual Symbol get_type() = 0;
+   virtual Boolean is_method() = 0;
+
+   virtual void set_class(Symbol) = 0;
+   virtual Symbol get_class() = 0;
 
 #ifdef Feature_EXTRAS
    Feature_EXTRAS
@@ -63,6 +79,10 @@ class Formal_class : public tree_node {
 public:
    tree_node *copy()		 { return copy_Formal(); }
    virtual Formal copy_Formal() = 0;
+   virtual void semant() = 0;
+
+   virtual Symbol get_name() = 0; 
+   virtual Symbol get_type() = 0;
 
 #ifdef Formal_EXTRAS
    Formal_EXTRAS
@@ -77,6 +97,7 @@ class Expression_class : public tree_node {
 public:
    tree_node *copy()		 { return copy_Expression(); }
    virtual Expression copy_Expression() = 0;
+   virtual void semant() = 0;
 
 #ifdef Expression_EXTRAS
    Expression_EXTRAS
@@ -91,6 +112,7 @@ class Case_class : public tree_node {
 public:
    tree_node *copy()		 { return copy_Case(); }
    virtual Case copy_Case() = 0;
+   virtual void semant() = 0;
 
 #ifdef Case_EXTRAS
    Case_EXTRAS
@@ -161,6 +183,11 @@ public:
    }
    Class_ copy_Class_();
    void dump(ostream& stream, int n);
+   void semant();
+
+   Symbol get_name() { return name; }
+   Symbol get_parent() { return parent; }
+   Features get_features() { return features; }
 
 #ifdef Class__SHARED_EXTRAS
    Class__SHARED_EXTRAS
@@ -187,6 +214,15 @@ public:
    }
    Feature copy_Feature();
    void dump(ostream& stream, int n);
+   void semant();
+
+   Symbol get_name() { return name; }
+   Formals get_formals() { return formals; }
+   Symbol get_type() { return return_type; }
+
+   Boolean is_method() { return 1; }
+   void set_class(Symbol c) { class_ = c; }
+   Symbol get_class() { return class_; }
 
 #ifdef Feature_SHARED_EXTRAS
    Feature_SHARED_EXTRAS
@@ -211,6 +247,14 @@ public:
    }
    Feature copy_Feature();
    void dump(ostream& stream, int n);
+   void semant();
+
+   Symbol get_name() { return name; }
+   Symbol get_type() { return type_decl; }
+
+   Boolean is_method() { return 0; }
+   void set_class(Symbol c) { class_ = c; }
+   Symbol get_class() { return class_; }
 
 #ifdef Feature_SHARED_EXTRAS
    Feature_SHARED_EXTRAS
@@ -233,6 +277,10 @@ public:
    }
    Formal copy_Formal();
    void dump(ostream& stream, int n);
+   void semant();
+
+   Symbol get_name() { return name; }
+   Symbol get_type() { return type_decl; }
 
 #ifdef Formal_SHARED_EXTRAS
    Formal_SHARED_EXTRAS
@@ -257,6 +305,11 @@ public:
    }
    Case copy_Case();
    void dump(ostream& stream, int n);
+   void semant();
+
+   Symbol get_name() { return name; }
+   Symbol get_type() { return type_decl; }
+   Expression get_expression() { return expr; }
 
 #ifdef Case_SHARED_EXTRAS
    Case_SHARED_EXTRAS
@@ -279,6 +332,12 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
+   void semant();
+
+   Symbol get_name() { return name; }
+   Expression get_expression() { return expr; }
+
+   
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
@@ -305,6 +364,13 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
+   void semant();
+
+   Symbol get_name() { return name; }
+   Symbol get_type_name() { return type_name; }
+   Expression get_expression() { return expr; }
+   Expressions get_actual() { return actual; }
+   
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
@@ -329,6 +395,12 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
+   void semant();
+
+   Symbol get_name() { return name; }
+   Expression get_expression() { return expr; }
+   Expressions get_actual() { return actual; }
+   
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
@@ -353,6 +425,12 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
+   void semant();
+
+   Expression get_prediction() { return pred; }
+   Expression get_then_expression() { return then_exp; }
+   Expression get_else_expression() { return else_exp; }
+   
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
@@ -375,6 +453,11 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
+   void semant();
+
+   Expression get_prediction() { return pred; }
+   Expression get_body() { return body; }
+   
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
@@ -397,6 +480,11 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
+   void semant();
+
+   Expression get_expression() { return expr; }
+   Cases get_cases() { return cases; }
+   
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
@@ -417,6 +505,10 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
+   void semant();
+
+   Expressions get_body() { return body; }
+   
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
@@ -443,6 +535,12 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
+   void semant();
+
+   Symbol get_identifier() { return identifier; }
+   
+   Expression get_init() { return init; }
+   Expression get_body() { return body; }
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
@@ -465,6 +563,11 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
+   void semant();
+
+   Expression get_first_expression() { return e1; }
+   Expression get_second_expression() { return e2; }
+   
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
@@ -487,6 +590,11 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
+   void semant();
+
+   Expression get_first_expression() { return e1; }
+   Expression get_second_expression() { return e2; }
+   
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
@@ -509,6 +617,11 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
+   void semant();
+
+   Expression get_first_expression() { return e1; }
+   Expression get_second_expression() { return e2; }
+   
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
@@ -531,6 +644,11 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
+   void semant();
+
+   Expression get_first_expression() { return e1; }
+   Expression get_second_expression() { return e2; }
+   
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
@@ -551,6 +669,10 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
+   void semant();
+
+   Expression get_expression() { return e1; }
+   
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
@@ -573,6 +695,11 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
+   void semant();
+
+   Expression get_first_expression() { return e1; }
+   Expression get_second_expression() { return e2; }
+   
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
@@ -595,6 +722,11 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
+   void semant();
+
+   Expression get_first_expression() { return e1; }
+   Expression get_second_expression() { return e2; }
+   
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
@@ -617,6 +749,11 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
+   void semant();
+
+   Expression get_first_expression() { return e1; }
+   Expression get_second_expression() { return e2; }
+   
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
@@ -637,6 +774,10 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
+   void semant();
+
+   Expression get_expression() { return e1; }
+   
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
@@ -657,6 +798,10 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
+   void semant();
+
+   Symbol get_token() { return token; }
+   
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
@@ -677,6 +822,10 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
+   void semant();
+
+   Boolean get_value() { return val; }
+   
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
@@ -697,6 +846,10 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
+   void semant();
+
+   Symbol get_token() { return token; }
+   
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
@@ -717,6 +870,10 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
+   void semant();
+
+   Symbol get_type_name() { return type_name; }
+   
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
@@ -737,6 +894,10 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
+   void semant();
+
+   Expression get_expression() { return e1; }
+   
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
@@ -755,6 +916,9 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
+   void semant();
+
+   
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
@@ -775,6 +939,10 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
+   void semant();
+
+   Symbol get_name() { return name; }
+   
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS

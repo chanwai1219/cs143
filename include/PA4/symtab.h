@@ -25,11 +25,11 @@ template <class SYM, class DAT>
 class SymtabEntry {
 private:
   SYM id;        // the key field
-  DAT *info;     // associated information for the symbol
+  DAT info;     // associated information for the symbol
 public:
-  SymtabEntry(SYM x, DAT *y) : id(x), info(y) { }
+  SymtabEntry(SYM x, DAT y) : id(x), info(y) { }
   SYM get_id() const    { return id; }
-  DAT *get_info() const { return info; }
+  DAT get_info() const { return info; }
 };
 
 //
@@ -113,12 +113,14 @@ public:
    }
 
    // Add an item to the symbol table.
-   ScopeEntry *addid(SYM s, DAT *i)
+   ScopeEntry *addid(SYM s, DAT i)
    {
+       ScopeList *otbl = tbl;
        // There must be at least one scope to add a symbol.
        if (tbl == NULL) fatal_error("addid: Can't add a symbol without a scope.");
        ScopeEntry * se = new ScopeEntry(s,i);
        tbl = new ScopeList(new Scope(se, tbl->hd()), tbl->tl());
+       delete otbl;
        return(se);
    }
    
@@ -126,7 +128,7 @@ public:
    // it returns the associated information field, if not it returns
    // NULL.
 
-   DAT * lookup(SYM s)
+   DAT lookup(SYM s)
    {
        for(ScopeList *i = tbl; i != NULL; i=i->tl()) {
 	   for( Scope *j = i->hd(); j != NULL; j = j->tl()) {
@@ -140,7 +142,7 @@ public:
 
    // probe the symbol table.  Check the top scope (only) for the item
    // 's'.  If found, return the information field.  If not return NULL.
-   DAT *probe(SYM s)
+   DAT probe(SYM s)
    {
        if (tbl == NULL) {
 	   fatal_error("probe: No scope in symbol table.");

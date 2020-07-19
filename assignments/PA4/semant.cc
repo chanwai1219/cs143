@@ -337,18 +337,26 @@ void method_class::semant()
     expr_type = expr->get_type();
     if (expr_type)
     {
-        if (expr_type == SELF_TYPE)
-        {
-            expr_type = current_class->get_name();
-        }
-
         if (return_type == SELF_TYPE)
         {
+            if (expr_type != self && expr_type != SELF_TYPE)
+            {
+                g_class_table->semant_error(current_class->get_filename(), this)
+                    << "Inferred return type " << expr->get_type() << " of method " << name
+                    << " does not conform to declared return type SELF_TYPE."
+                    << "." << std::endl;
+                return;
+            }
             method_type = current_class->get_name();
         }
         else
         {
             method_type = return_type;
+        }
+
+        if (expr_type == SELF_TYPE)
+        {
+            expr_type = current_class->get_name();
         }
 
         if (!is_base_of(method_type, expr_type))

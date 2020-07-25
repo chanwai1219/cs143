@@ -1,5 +1,8 @@
 #include <assert.h>
 #include <stdio.h>
+#include <vector>
+#include <map>
+#include <algorithm>
 #include "emit.h"
 #include "cool-tree.h"
 #include "symtab.h"
@@ -33,6 +36,7 @@ private:
    void code_constants();
    void code_objects();
    void code_object_initializer();
+   void code_object_method();
 
 // The following creates an inheritance graph from
 // a list of classes.  The graph is implemented as
@@ -58,6 +62,15 @@ private:
    Basicness basic_status;                    // `Basic' if class is basic
                                               // `NotBasic' otherwise
 
+   std::vector<method_class *> methods;
+   std::vector<method_class *> all_methods;
+   std::vector<attr_class *> attrs;
+   std::vector<attr_class *> all_attrs;
+   std::vector<CgenNode*> inheritance;
+   std::map<Symbol, Symbol> dispatch_class_table;
+   std::map<Symbol, int> dispatch_index_table;
+   std::map<Symbol, int> attr_index_table;
+
 public:
    CgenNode(Class_ c,
             Basicness bstatus,
@@ -68,6 +81,16 @@ public:
    void set_parentnd(CgenNodeP p);
    CgenNodeP get_parentnd() { return parentnd; }
    int basic() { return (basic_status == Basic); }
+
+   std::vector<CgenNode*> get_inheritance();
+
+   std::vector<method_class*> get_methods();
+   std::vector<method_class*> get_all_methods();
+   std::vector<attr_class*> get_attrs();
+   std::vector<attr_class*> get_all_attrs();
+   std::map<Symbol, Symbol> get_dispatch_class_table() { return dispatch_class_table; }
+   std::map<Symbol, int> get_dispatch_index_table() { return dispatch_index_table; }
+   std::map<Symbol, int> get_attr_index_table() { return attr_index_table; }
 };
 
 class BoolConst 

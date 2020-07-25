@@ -1042,7 +1042,115 @@ void CgenNode::set_parentnd(CgenNodeP p)
   parentnd = p;
 }
 
+std::vector<method_class *> CgenNode::get_methods()
+{
+  if (methods.empty())
+  {
+    Feature feature;
+    method_class *method;
 
+    for (int i = features->first(); features->more(i); i = features->next(i))
+    {
+      feature = features->nth(i);
+      if (feature->is_method())
+      {
+        method = (method_class *)feature;
+        methods.push_back(method);
+      }
+    }
+  }
+  return methods;
+}
+std::vector<method_class *> CgenNode::get_all_methods()
+{
+  if (all_methods.empty())
+  {
+    std::vector<CgenNode *> inheritance = get_inheritance();
+    for (unsigned int i = 0; i < inheritance.size(); i++)
+    {
+      CgenNodeP _class_node = inheritance[i];
+      Symbol _class_name = _class_node->name;
+      std::vector<method_class *> _methods = _class_node->get_methods();
+      for (unsigned int j = 0; j < _methods.size(); j++)
+      {
+        method_class *_method = _methods[j];
+        Symbol _method_name = _method->name;
+        if (dispatch_index_table.find(_method_name) == dispatch_index_table.end())
+        {
+          // method need to be inserted.
+          all_methods.push_back(_method);
+          dispatch_index_table[_method_name] = all_methods.size() - 1;
+          dispatch_class_table[_method_name] = _class_name;
+        }
+        else
+        {
+          int idx = dispatch_index_table[_method_name];
+          all_methods[idx] = _method;
+          dispatch_class_table[_method_name] = _class_name;
+        }
+      }
+    }
+  }
+  return all_methods;
+}
+std::vector<attr_class *> CgenNode::get_attrs()
+{
+  if (attrs.empty())
+  {
+    Feature feature;
+    attr_class *attr;
+    for (unsigned int i = features->first(); features->more(i); i = features->next(i))
+    {
+      feature = features->nth(i);
+      if (!feature->is_method())
+      {
+        attr = (attr_class *)feature;
+        attrs.push_back(attr);
+      }
+    }
+  }
+
+  return attrs;
+}
+std::vector<attr_class *> CgenNode::get_all_attrs()
+{
+  if (all_attrs.empty())
+  {
+    std::vector<CgenNode *> inheritance = get_inheritance();
+    for (unsigned int i = 0; i < inheritance.size(); i++)
+    {
+      CgenNode *class_node = inheritance[i];
+      Features features = class_node->features;
+      for (unsigned int j = features->first(); features->more(j); j = features->next(j))
+      {
+        Feature feature = features->nth(j);
+        if (!feature->is_method())
+        {
+          attr_class *attr = (attr_class *)feature;
+          all_attrs.push_back(attr);
+          attr_index_table[attr->name] = all_attrs.size() - 1;
+        }
+      }
+    }
+  }
+
+  return all_attrs;
+}
+std::vector<CgenNode *> CgenNode::get_inheritance()
+{
+  if (inheritance.empty())
+  {
+    CgenNode *class_node = this;
+    while (class_node->name != No_class)
+    {
+      inheritance.push_back(class_node);
+      class_node = class_node->get_parentnd();
+    }
+    std::reverse(inheritance.begin(), inheritance.end());
+  }
+
+  return inheritance;
+}
 
 void CgenClassTable::code()
 {
@@ -1117,6 +1225,12 @@ void static_dispatch_class::code(ostream &s) {
 }
 
 void dispatch_class::code(ostream &s) {
+  expr->code(s);
+  for (int i = actual->first(); actual->more(i); i = actual->next(i))
+  {
+    actual->nth(i)->code(s);
+  }
+  emit_jal(name->get_string(), s);
 }
 
 void cond_class::code(ostream &s) {
@@ -1129,6 +1243,11 @@ void typcase_class::code(ostream &s) {
 }
 
 void block_class::code(ostream &s) {
+  for (int i = body->first(); body->more(i); i = body->next(i))
+  {
+    Expression e = body->nth(i);
+    e->code(s);
+  }
 }
 
 void let_class::code(ostream &s) {

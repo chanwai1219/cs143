@@ -354,6 +354,23 @@ static void emit_gc_check(char *source, ostream &s)
   s << JAL << "_gc_check" << endl;
 }
 
+static void emit_dispatch_enter(ostream &s)
+{
+  emit_addiu(SP, SP, -12, s);
+  emit_store(FP, 3, SP, s);
+  emit_store(SELF, 2, SP, s);
+  emit_store(RA, 1, SP, s);
+  emit_addiu(FP, SP, 4, s);
+}
+
+static void emit_dispatch_exit(ostream &s)
+{
+  emit_load(FP, 3, SP, s);
+  emit_load(SELF, 2, SP, s);
+  emit_load(RA, 1, SP, s);
+  emit_addiu(SP, SP, 12, s);
+  emit_return(s);
+}
 
 ///////////////////////////////////////////////////////////////////////////////
 //
@@ -403,7 +420,7 @@ void StringEntry::code_def(ostream& s, int stringclasstag)
 
 
  /***** Add dispatch information for class String ******/
-
+      emit_disptable_ref(Str, s);
       s << endl;                                              // dispatch table
       s << WORD;  lensym->code_ref(s);  s << endl;            // string length
   emit_string_constant(s,str);                                // ascii string
@@ -445,7 +462,7 @@ void IntEntry::code_def(ostream &s, int intclasstag)
       << WORD; 
 
  /***** Add dispatch information for class Int ******/
-
+      emit_disptable_ref(Int, s);
       s << endl;                                          // dispatch table
       s << WORD << str << endl;                           // integer value
 }
@@ -489,7 +506,7 @@ void BoolConst::code_def(ostream& s, int boolclasstag)
       << WORD;
 
  /***** Add dispatch information for class Bool ******/
-
+      emit_disptable_ref(Bool, s);
       s << endl;                                            // dispatch table
       s << WORD << val << endl;                             // value (0 or 1)
 }
@@ -616,12 +633,222 @@ void CgenClassTable::code_constants()
   code_bools(boolclasstag);
 }
 
+void CgenClassTable::code_objects()
+{
+  Symbol s;
+
+  /* class name table */
+  str << CLASSNAMETAB << LABEL;
+  for (List<CgenNode> *l = nds; l; l = l->tl())
+  {
+    s = l->hd()->get_name();
+    str << WORD;
+    stringtable.lookup_string(s->get_string())->code_ref(str);
+    str << endl;
+  }
+
+  /* object table */
+  str << CLASSOBJTAB << LABEL;
+  for (List<CgenNode> *l = nds; l; l = l->tl())
+  {
+    s = l->hd()->get_name();
+
+    str << WORD;
+    emit_protobj_ref(s, str);
+    str << endl;
+    str << WORD;
+    emit_init_ref(s, str);
+    str << endl;
+  }
+
+  for (List<CgenNode> *l = nds; l; l = l->tl())
+  {
+    List<CgenNode> *list = NULL;
+    class__class *class_;
+    Features features;
+    Feature feature;
+    method_class *method;
+    Symbol parent;
+    CgenNodeP node;
+
+    node = l->hd();
+
+    emit_disptable_ref(node->get_name(), str);
+    str << LABEL;
+
+    while (node->get_name() != No_class)
+    {
+      list = new List<CgenNode>(node, list);
+      node = node->get_parentnd();
+    }
+
+    for (list; list != NULL; list = list->tl())
+    {
+      class_ = probe(list->hd()->get_name());
+      features = class_->features;
+      for (int i = features->first(); features->more(i); i = features->next(i))
+      {
+        feature = features->nth(i);
+        if (feature->is_method())
+        {
+          method = (method_class *)feature;
+          str << WORD;
+          str << class_->get_name() << METHOD_SEP << method->name << endl;
+        }
+      }
+    }
+  }
+
+  for (List<CgenNode> *l = nds; l; l = l->tl())
+  {
+    List<CgenNode> *list = NULL, *lp;
+    class__class *class_;
+    Features features;
+    Feature feature;
+    attr_class *attr;
+    Symbol parent;
+    CgenNodeP node;
+    int words = 0;
+
+    node = l->hd();
+
+    while (node->get_name() != No_class)
+    {
+      list = new List<CgenNode>(node, list);
+      node = node->get_parentnd();
+    }
+
+    for (lp = list; lp != NULL; lp = lp->tl())
+    {
+      class_ = probe(lp->hd()->get_name());
+      features = class_->features;
+      for (int i = features->first(); features->more(i); i = features->next(i))
+      {
+        feature = features->nth(i);
+        if (!feature->is_method())
+        {
+          words += 1;
+        }
+      }
+    }
+
+    node = l->hd();
+    str << WORD << "-1" << endl;
+
+    str << node->get_name() << PROTOBJ_SUFFIX << LABEL;
+    str << WORD << EMPTYSLOT << endl;         // class tag
+    str << WORD << DEFAULT_OBJFIELDS + words << endl; // length
+    str << WORD;                              // dispatch table
+    emit_disptable_ref(node->get_name(), str);
+    str << endl;
+
+    for (lp = list; lp != NULL; lp = lp->tl())
+    {
+      class_ = probe(lp->hd()->get_name());
+      features = class_->features;
+      for (int i = features->first(); features->more(i); i = features->next(i))
+      {
+        feature = features->nth(i);
+        if (!feature->is_method())
+        {
+          attr = (attr_class *)feature;
+          str << WORD;
+          str << i << endl;
+        }
+      }
+    }
+  }
+}
+
+void CgenClassTable::code_object_initializer()
+{
+  Symbol s;
+  
+  for (List<CgenNode> *l = nds; l; l = l->tl())
+  {
+    List<CgenNode> *list = NULL;
+    class__class *class_;
+    Features features;
+    Feature feature;
+    method_class *method;
+    Symbol parent;
+    CgenNodeP node;
+
+    node = l->hd();
+
+    str << node->get_name() << CLASSINIT_SUFFIX << LABEL;
+
+    emit_dispatch_enter(str);
+
+    emit_move(SELF, ACC, str);
+
+    parent = node->get_parentnd()->get_name();
+    if (parent != No_class)
+    {
+      str << JAL;
+      emit_init_ref(parent, str);
+      str << endl;
+    }
+
+    emit_move(ACC, SELF, str);
+
+    emit_dispatch_exit(str);
+  }
+}
+
+void CgenClassTable::code_object_method()
+{
+  for (List<CgenNode> *l = nds; l; l = l->tl())
+  {
+    List<CgenNode> *list = NULL;
+    class__class *class_;
+    Features features;
+    Feature feature;
+    Formals formals;
+    Formal formal;
+    method_class *method;
+    attr_class *attr;
+    Symbol parent;
+    CgenNodeP node;
+
+    node = l->hd();
+
+    if (node->basic())
+      continue;
+
+    class_ = probe(node->get_name());
+    features = class_->features;
+    for (int i = features->first(); features->more(i); i = features->next(i))
+    {
+      feature = features->nth(i);
+      if (!feature->is_method())
+      {
+        attr = (attr_class *)feature;
+        // attr->init->code(str);
+      }
+      else
+      {
+        method = (method_class *)feature;
+        // formals = method->formals;
+        // for (int j = formals->first(); formals->more(j); j = formals->next(j))
+        // {
+        //   formal = formals->nth(j);
+        // }
+        emit_method_ref(node->get_name(), method->name, str);
+        str << LABEL;
+        emit_dispatch_enter(str);
+        method->expr->code(str);
+        emit_dispatch_exit(str);
+      }
+    }
+  }
+}
 
 CgenClassTable::CgenClassTable(Classes classes, ostream& s) : nds(NULL) , str(s)
 {
-   stringclasstag = 0 /* Change to your String class tag here */;
-   intclasstag =    0 /* Change to your Int class tag here */;
-   boolclasstag =   0 /* Change to your Bool class tag here */;
+   stringclasstag = 4 /* Change to your String class tag here */;
+   intclasstag =    2 /* Change to your Int class tag here */;
+   boolclasstag =   3 /* Change to your Bool class tag here */;
 
    enterscope();
    if (cgen_debug) cout << "Building CgenClassTable" << endl;
@@ -834,6 +1061,9 @@ void CgenClassTable::code()
 //                   - dispatch tables
 //
 
+  if (cgen_debug) cout << "coding object table" << endl;
+  code_objects();
+
   if (cgen_debug) cout << "coding global text" << endl;
   code_global_text();
 
@@ -842,8 +1072,11 @@ void CgenClassTable::code()
 //                   - the class methods
 //                   - etc...
 
-}
+  if (cgen_debug) cout << "coding object initializer" << endl;
+  code_object_initializer();
 
+  code_object_method();
+}
 
 CgenNodeP CgenClassTable::root()
 {

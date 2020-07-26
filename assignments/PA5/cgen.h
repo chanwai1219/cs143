@@ -154,7 +154,7 @@ public:
    int add_variable(Symbol sym)
    {
       m_var_idx_tab.push_back(sym);
-      ++m_scope_lengths[m_scope_lengths.size() - 1];
+      // ++m_scope_lengths[m_scope_lengths.size() - 1];
       return m_var_idx_tab.size() - 1;
    }
 

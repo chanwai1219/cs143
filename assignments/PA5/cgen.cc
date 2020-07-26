@@ -357,24 +357,6 @@ static void emit_gc_check(char *source, ostream &s)
   s << JAL << "_gc_check" << endl;
 }
 
-static void emit_dispatch_enter(ostream &s)
-{
-  emit_addiu(SP, SP, -12, s);
-  emit_store(FP, 3, SP, s);
-  emit_store(SELF, 2, SP, s);
-  emit_store(RA, 1, SP, s);
-  emit_addiu(FP, SP, 4, s);
-}
-
-static void emit_dispatch_exit(ostream &s)
-{
-  emit_load(FP, 3, SP, s);
-  emit_load(SELF, 2, SP, s);
-  emit_load(RA, 1, SP, s);
-  emit_addiu(SP, SP, 12, s);
-  emit_return(s);
-}
-
 ///////////////////////////////////////////////////////////////////////////////
 //
 // coding strings, ints, and booleans
@@ -734,7 +716,11 @@ void CgenClassTable::code_object_initializer()
 
     str << node->get_name() << CLASSINIT_SUFFIX << LABEL;
 
-    emit_dispatch_enter(str);
+    emit_addiu(SP, SP, -12, str);
+    emit_store(FP, 3, SP, str);
+    emit_store(SELF, 2, SP, str);
+    emit_store(RA, 1, SP, str);
+    emit_addiu(FP, SP, 4, str);
 
     emit_move(SELF, ACC, str);
 
@@ -748,7 +734,11 @@ void CgenClassTable::code_object_initializer()
 
     emit_move(ACC, SELF, str);
 
-    emit_dispatch_exit(str);
+    emit_load(FP, 3, SP, str);
+    emit_load(SELF, 2, SP, str);
+    emit_load(RA, 1, SP, str);
+    emit_addiu(SP, SP, 12, str);
+    emit_return(str);
   }
 }
 
@@ -766,6 +756,7 @@ void CgenClassTable::code_object_method()
     attr_class *attr;
     Symbol parent;
     CgenNodeP node;
+    int formal_number = 0;
 
     node = l->hd();
 
@@ -795,12 +786,25 @@ void CgenClassTable::code_object_method()
         {
           formal = (formal_class *)formals->nth(j);
           enviroment->add_parameter(formal->name);
+          formal_number++;
         }
         emit_method_ref(node->get_name(), method->name, str);
         str << LABEL;
-        emit_dispatch_enter(str);
+
+        emit_addiu(SP, SP, -12, str);
+        emit_store(FP, 3, SP, str);
+        emit_store(SELF, 2, SP, str);
+        emit_store(RA, 1, SP, str);
+        emit_addiu(FP, SP, 4, str);
+        emit_move(SELF, ACC, str);
+
         method->expr->code(str);
-        emit_dispatch_exit(str);
+
+        emit_load(FP, 3, SP, str);
+        emit_load(SELF, 2, SP, str);
+        emit_load(RA, 1, SP, str);
+        emit_addiu(SP, SP, 12 + formal_number * WORD_SIZE, str);
+        emit_return(str);
       }
     }
   }
@@ -1231,6 +1235,25 @@ CgenNode::CgenNode(Class_ nd, Basicness bstatus, CgenClassTableP ct) :
 //*****************************************************************
 
 void assign_class::code(ostream &s) {
+  int index;
+
+  expr->code(s);
+
+  if ((index = enviroment->find_variable(name)) != -1)
+  {
+    emit_store(ACC, index + 1, SP, s);
+  }
+  else if ((index = enviroment->find_parameter(name)) != -1)
+  {
+    emit_store(ACC, index + 3, FP, s);
+  }
+  else if ((index = enviroment->find_attr(name)) != -1)
+  {
+    emit_store(ACC, index + 1, SELF, s);
+  }
+  else
+  {
+  }
 }
 
 void static_dispatch_class::code(ostream &s) {
@@ -1238,25 +1261,25 @@ void static_dispatch_class::code(ostream &s) {
 
 void dispatch_class::code(ostream &s)
 {
-  expr->code(s);
+  int idx;
+  Symbol _class_name;
+  CgenNode *_class_node;
+
   for (int i = actual->first(); actual->more(i); i = actual->next(i))
   {
     actual->nth(i)->code(s);
     emit_push(ACC, s);
   }
-  Symbol _class_name = enviroment->m_class_node->name;
-  CgenNode *_class_node = codegen_classtable->get_class_node(_class_name);
+
+  expr->code(s);
+
+  _class_name = enviroment->m_class_node->name;
+  _class_node = codegen_classtable->get_class_node(_class_name);
+  idx = _class_node->get_dispatch_index_table()[name];
+
   emit_load(T1, 2, ACC, s);
-  s << endl;
-
-  int idx = _class_node->get_dispatch_index_table()[name];
-  s << "\t# t1 = dispTab[offset]" << endl;
   emit_load(T1, idx, T1, s);
-  s << endl;
-
-  s << "\t# jumpto " << name << endl;
   emit_jalr(T1, s);
-  s << endl;
 }
 
 void cond_class::code(ostream &s) {
@@ -1277,6 +1300,11 @@ void block_class::code(ostream &s) {
 }
 
 void let_class::code(ostream &s) {
+  init->code(s);
+  enviroment->add_variable(identifier);
+  emit_push(ACC, s);
+  body->code(s);
+  emit_addiu(SP, SP, 4, s);
 }
 
 void plus_class::code(ostream &s) {
@@ -1334,6 +1362,24 @@ void no_expr_class::code(ostream &s) {
 }
 
 void object_class::code(ostream &s) {
+  int index;
+  if ((index = enviroment->find_variable(name)) != -1)
+  {
+    emit_load(ACC, index + 1, SP, s);
+  }
+  else if ((index = enviroment->find_parameter(name)) != -1)
+  {
+    emit_load(ACC, index + 3, FP, s);
+  }
+  else if ((index = enviroment->find_attr(name)) != -1)
+  {
+    emit_load(ACC, index + 1, SELF, s);
+  }
+  else if (name == self)
+  {
+    emit_move(ACC, SELF, s);
+  }
+  else
+  {
+  }
 }
-
-

@@ -154,20 +154,19 @@ public:
    int add_variable(Symbol sym)
    {
       m_var_idx_tab.push_back(sym);
-      // ++m_scope_lengths[m_scope_lengths.size() - 1];
+      ++m_scope_lengths[m_scope_lengths.size() - 1];
       return m_var_idx_tab.size() - 1;
    }
 
-   int add_obstacle()
+   int fix_variable_index()
    {
-      enter_scope();
       extern Symbol No_class;
       return add_variable(No_class);
    }
 
    int find_parameter(Symbol sym)
    {
-      for (int idx = 0; idx < m_param_idx_tab.size(); ++idx)
+      for (unsigned int idx = 0; idx < m_param_idx_tab.size(); ++idx)
       {
          if (m_param_idx_tab[idx] == sym)
          {

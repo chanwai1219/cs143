@@ -28,6 +28,8 @@
 extern void emit_string_constant(ostream& str, char *s);
 extern int cgen_debug;
 
+int cgen_comment = 1;
+int labelnum = 0;
 class Environment *enviroment;
 CgenClassTableP codegen_classtable;
 
@@ -781,6 +783,7 @@ void CgenClassTable::code_object_method()
         if (enviroment)
           delete enviroment;
         enviroment = new Environment(node);
+        enviroment->enter_scope();
 
         for (int j = formals->first(); formals->more(j); j = formals->next(j))
         {
@@ -1234,152 +1237,597 @@ CgenNode::CgenNode(Class_ nd, Basicness bstatus, CgenClassTableP ct) :
 //
 //*****************************************************************
 
-void assign_class::code(ostream &s) {
+void assign_class::code(ostream &s)
+{
   int index;
 
+  if (cgen_comment)
+    s << "\t# Assign. First eval the expr." << endl;
   expr->code(s);
 
   if ((index = enviroment->find_variable(name)) != -1)
   {
+    if (cgen_comment)
+      s << "\t# It is a let variable." << endl;
     emit_store(ACC, index + 1, SP, s);
   }
   else if ((index = enviroment->find_parameter(name)) != -1)
   {
+    if (cgen_comment)
+      s << "\t# It is a param." << endl;
     emit_store(ACC, index + 3, FP, s);
   }
   else if ((index = enviroment->find_attr(name)) != -1)
   {
-    emit_store(ACC, index + 1, SELF, s);
+    if (cgen_comment)
+      s << "\t# It is an attribute." << endl;
+    emit_store(ACC, index + 3, SELF, s);
   }
   else
   {
+    if (cgen_comment)
+      s << "invalid object" << name << endl;
   }
 }
 
-void static_dispatch_class::code(ostream &s) {
+void static_dispatch_class::code(ostream &s)
+{
 }
 
 void dispatch_class::code(ostream &s)
 {
   int idx;
   Symbol _class_name;
-  CgenNode *_class_node;
+  CgenNodeP _class_node;
+
+  if (cgen_comment)
+    s << "\t# Dispatch " << name << ". First eval and save the params." << endl;
+
+  enviroment->enter_scope();
 
   for (int i = actual->first(); actual->more(i); i = actual->next(i))
   {
+    if (cgen_comment)
+      s << "\t# eval parameter " << i << endl;
     actual->nth(i)->code(s);
+    if (cgen_comment)
+      s << "\t# push parameter " << i << endl;
     emit_push(ACC, s);
+    enviroment->fix_variable_index();
   }
-
-  expr->code(s);
 
   _class_name = enviroment->m_class_node->name;
   _class_node = codegen_classtable->get_class_node(_class_name);
   idx = _class_node->get_dispatch_index_table()[name];
 
+  expr->code(s);
+
+  // if (cgen_comment)
+  //   s << "\t# if obj = void: abort" << endl;
+  // emit_bne(ACC, ZERO, labelnum, s);
+  // s << LA << ACC << " str_const0" << endl;
+  // emit_load_imm(T1, 1, s);
+  // emit_jal("_dispatch_abort", s);
+  // emit_label_def(labelnum, s);
+  // ++labelnum;
+
+  if (cgen_comment)
+    s << "\t# t1 = self.dispTab" << endl;
   emit_load(T1, 2, ACC, s);
+  if (cgen_comment)
+    s << "\t# t1 = dispTab[offset]" << endl;
   emit_load(T1, idx, T1, s);
+  if (cgen_comment)
+    s << "\t# jumpto " << name << endl;
   emit_jalr(T1, s);
+
+  enviroment->exit_scope();
 }
 
-void cond_class::code(ostream &s) {
+void cond_class::code(ostream &s)
+{
+  if (cgen_comment)
+    s << "\t# If statement. First eval condition." << endl;
+  pred->code(s);
+
+  if (cgen_comment)
+    s << "\t# extract the bool content from acc to t1" << endl;
+  emit_fetch_int(T1, ACC, s);
+  s << endl;
+
+  int labelnum_false = labelnum++;
+  int labelnum_finish = labelnum++;
+  // labelnum : false.
+  // labelnum + 1: finish
+  if (cgen_comment)
+    s << "\t# if t1 == 0 goto false" << endl;
+  emit_beq(T1, ZERO, labelnum_false, s);
+  s << endl;
+
+  then_exp->code(s);
+
+  if (cgen_comment)
+    s << "\t# jumpt finish" << endl;
+  emit_branch(labelnum_finish, s);
+  s << endl;
+
+  if (cgen_comment)
+    s << "# False:" << endl;
+  emit_label_def(labelnum_false, s);
+
+  else_exp->code(s);
+
+  if (cgen_comment)
+    s << "# Finish:" << endl;
+  emit_label_def(labelnum_finish, s);
 }
 
-void loop_class::code(ostream &s) {
+void loop_class::code(ostream &s)
+{
+  int start = labelnum;
+  int finish = labelnum + 1;
+  labelnum += 2;
+
+  if (cgen_comment)
+  {
+    s << "\t# While loop" << endl;
+    s << "\t# start:" << endl;
+  }
+  emit_label_def(start, s);
+  if (cgen_comment)
+    s << "\t# ACC = pred" << endl;
+  pred->code(s);
+  if (cgen_comment)
+    s << "\t# extract int inside bool" << endl;
+  emit_fetch_int(T1, ACC, s);
+  s << endl;
+
+  if (cgen_comment)
+    s << "\t# if pred == false jumpto finish" << endl;
+  emit_beq(T1, ZERO, finish, s);
+  s << endl;
+
+  body->code(s);
+
+  if (cgen_comment)
+    s << "\t# Jumpto start" << endl;
+  emit_branch(start, s);
+
+  if (cgen_comment)
+    s << "\t# Finish:" << endl;
+  emit_label_def(finish, s);
+
+  if (cgen_comment)
+    s << "\t# ACC = void" << endl;
+  emit_move(ACC, ZERO, s);
 }
 
-void typcase_class::code(ostream &s) {
+void typcase_class::code(ostream &s)
+{
 }
 
-void block_class::code(ostream &s) {
+void block_class::code(ostream &s)
+{
+  if (cgen_comment)
+    s << "\t# Block " << endl;
   for (int i = body->first(); body->more(i); i = body->next(i))
   {
     Expression e = body->nth(i);
+    if (cgen_comment)
+      s << "\t# body " << i << endl;
     e->code(s);
   }
 }
 
-void let_class::code(ostream &s) {
+void let_class::code(ostream &s)
+{
+  if (cgen_comment)
+  {
+    s << "\t# Let expr" << endl;
+    s << "\t# First eval init" << endl;
+  }
   init->code(s);
+  enviroment->enter_scope();
   enviroment->add_variable(identifier);
+  if (cgen_comment)
+    s << "\t# push ACC" << endl;
   emit_push(ACC, s);
+  if (cgen_comment)
+    s << "\t# Then eval body" << endl;
   body->code(s);
+  if (cgen_comment)
+    s << "\t# pop" << endl;
   emit_addiu(SP, SP, 4, s);
+  enviroment->exit_scope();
 }
 
-void plus_class::code(ostream &s) {
+void plus_class::code(ostream &s)
+{
+  if (cgen_comment)
+  {
+    s << "\t# Int operation : Add" << endl;
+    s << "\t# First eval e1 and push." << endl;
+  }
+  e1->code(s);
+  emit_push(ACC, s);
+  enviroment->fix_variable_index();
+
+  if (cgen_comment)
+    s << "\t# Then eval e2 and make a copy for result." << endl;
+  e2->code(s);
+  emit_jal("Object.copy", s);
+
+  if (cgen_comment)
+    s << "\t# Let's pop e1 to t1, move e2 to t2" << endl;
+  emit_addiu(SP, SP, 4, s);
+  emit_load(T1, 0, SP, s);
+  emit_move(T2, ACC, s);
+
+  if (cgen_comment)
+    s << "\t# Extract the int inside the object." << endl;
+  emit_load(T1, 3, T1, s);
+  emit_load(T2, 3, T2, s);
+
+  if (cgen_comment)
+    s << "\t# Modify the int inside t2." << endl;
+  emit_add(T3, T1, T2, s);
+  emit_store(T3, 3, ACC, s);
 }
 
-void sub_class::code(ostream &s) {
+void sub_class::code(ostream &s)
+{
+  if (cgen_comment)
+  {
+    s << "\t# Int operation : Sub" << endl;
+    s << "\t# First eval e1 and push." << endl;
+  }
+  e1->code(s);
+  emit_push(ACC, s);
+  enviroment->fix_variable_index();
+
+  if (cgen_comment)
+    s << "\t# Then eval e2 and make a copy for result." << endl;
+  e2->code(s);
+  emit_jal("Object.copy", s);
+
+  if (cgen_comment)
+    s << "\t# Let's pop e1 to t1, move e2 to t2" << endl;
+  emit_addiu(SP, SP, 4, s);
+  emit_load(T1, 0, SP, s);
+  emit_move(T2, ACC, s);
+
+  if (cgen_comment)
+    s << "\t# Extract the int inside the object." << endl;
+  emit_load(T1, 3, T1, s);
+  emit_load(T2, 3, T2, s);
+
+  if (cgen_comment)
+    s << "\t# Modify the int inside t2." << endl;
+  emit_sub(T3, T1, T2, s);
+  emit_store(T3, 3, ACC, s);
 }
 
-void mul_class::code(ostream &s) {
+void mul_class::code(ostream &s)
+{
+  if (cgen_comment)
+  {
+    s << "\t# Int operation : Mul" << endl;
+    s << "\t# First eval e1 and push." << endl;
+  }
+  e1->code(s);
+  emit_push(ACC, s);
+  enviroment->fix_variable_index();
+
+  if (cgen_comment)
+    s << "\t# Then eval e2 and make a copy for result." << endl;
+  e2->code(s);
+  emit_jal("Object.copy", s);
+
+  if (cgen_comment)
+    s << "\t# Let's pop e1 to t1, move e2 to t2" << endl;
+  emit_addiu(SP, SP, 4, s);
+  emit_load(T1, 0, SP, s);
+  emit_move(T2, ACC, s);
+
+  if (cgen_comment)
+    s << "\t# Extract the int inside the object." << endl;
+  emit_load(T1, 3, T1, s);
+  emit_load(T2, 3, T2, s);
+
+  if (cgen_comment)
+    s << "\t# Modify the int inside t2." << endl;
+  emit_mul(T3, T1, T2, s);
+  emit_store(T3, 3, ACC, s);
 }
 
-void divide_class::code(ostream &s) {
+void divide_class::code(ostream &s)
+{
+  if (cgen_comment)
+  {
+    s << "\t# Int operation : Div" << endl;
+    s << "\t# First eval e1 and push." << endl;
+  }
+  e1->code(s);
+  emit_push(ACC, s);
+  enviroment->fix_variable_index();
+
+  if (cgen_comment)
+    s << "\t# Then eval e2 and make a copy for result." << endl;
+  e2->code(s);
+  emit_jal("Object.copy", s);
+  s << endl;
+
+  if (cgen_comment)
+    s << "\t# Let's pop e1 to t1, move e2 to t2" << endl;
+  emit_addiu(SP, SP, 4, s);
+  emit_load(T1, 0, SP, s);
+  emit_move(T2, ACC, s);
+  s << endl;
+
+  if (cgen_comment)
+    s << "\t# Extract the int inside the object." << endl;
+  emit_load(T1, 3, T1, s);
+  emit_load(T2, 3, T2, s);
+  s << endl;
+
+  if (cgen_comment)
+    s << "\t# Modify the int inside t2." << endl;
+  emit_div(T3, T1, T2, s);
+  emit_store(T3, 3, ACC, s);
 }
 
-void neg_class::code(ostream &s) {
+void neg_class::code(ostream &s)
+{
+  if (cgen_comment)
+  {
+    s << "\t# Neg" << endl;
+    s << "\t# Eval e1 and make a copy for result" << endl;
+  }
+  e1->code(s);
+  emit_jal("Object.copy", s);
+  s << endl;
+
+  emit_load(T1, 3, ACC, s);
+  emit_neg(T1, T1, s);
+  emit_store(T1, 3, ACC, s);
 }
 
-void lt_class::code(ostream &s) {
+void lt_class::code(ostream &s)
+{
+  if (cgen_comment)
+  {
+    s << "\t# Int operation : Less than" << endl;
+    s << "\t# First eval e1 and push." << endl;
+  }
+  e1->code(s);
+  emit_push(ACC, s);
+  enviroment->fix_variable_index();
+
+  if (cgen_comment)
+    s << "\t# Then eval e2." << endl;
+  e2->code(s);
+  s << endl;
+
+  if (cgen_comment)
+    s << "\t# Let's pop e1 to t1, move e2 to t2" << endl;
+  emit_addiu(SP, SP, 4, s);
+  emit_load(T1, 0, SP, s);
+  emit_move(T2, ACC, s);
+  s << endl;
+
+  if (cgen_comment)
+    s << "\t# Extract the int inside the object." << endl;
+  emit_load(T1, 3, T1, s);
+  emit_load(T2, 3, T2, s);
+  s << endl;
+
+  if (cgen_comment)
+    s << "\t# Pretend that t1 < t2" << endl;
+  emit_load_bool(ACC, BoolConst(1), s);
+  if (cgen_comment)
+    s << "\t# If t1 < t2 jumpto finish" << endl;
+  emit_blt(T1, T2, labelnum, s);
+
+  emit_load_bool(ACC, BoolConst(0), s);
+  emit_label_def(labelnum, s);
+
+  ++labelnum;
 }
 
-void eq_class::code(ostream &s) {
+void eq_class::code(ostream &s)
+{
+  if (cgen_comment)
+  {
+    s << "\t# equal" << endl;
+    s << "\t# First eval e1 and push." << endl;
+  }
+  e1->code(s);
+  emit_push(ACC, s);
+  enviroment->fix_variable_index();
+
+  if (cgen_comment)
+    s << "\t# Then eval e2." << endl;
+  e2->code(s);
+  s << endl;
+
+  if (cgen_comment)
+    s << "\t# Let's pop e1 to t1, move e2 to t2" << endl;
+  emit_addiu(SP, SP, 4, s);
+  emit_load(T1, 0, SP, s);
+  emit_move(T2, ACC, s);
+  s << endl;
+
+  if (e1->type == Int || e1->type == Str || e1->type == Bool)
+    if (e2->type == Int || e2->type == Str || e2->type == Bool)
+    {
+      emit_load_bool(ACC, BoolConst(1), s);
+      emit_load_bool(A1, BoolConst(0), s);
+      emit_jal("equality_test", s);
+      return;
+    }
+
+  if (cgen_comment)
+    s << "\t# Pretend that t1 = t2" << endl;
+  emit_load_bool(ACC, BoolConst(1), s);
+  if (cgen_comment)
+    s << "\t# Compare the two pointers." << endl;
+  emit_beq(T1, T2, labelnum, s);
+  emit_load_bool(ACC, BoolConst(0), s);
+  emit_label_def(labelnum, s);
+  ++labelnum;
 }
 
-void leq_class::code(ostream &s) {
+void leq_class::code(ostream &s)
+{
+  if (cgen_comment)
+  {
+    s << "\t# Int operation : Less or equal" << endl;
+    s << "\t# First eval e1 and push." << endl;
+  }
+  e1->code(s);
+  emit_push(ACC, s);
+  enviroment->fix_variable_index();
+
+  if (cgen_comment)
+    s << "\t# Then eval e2." << endl;
+  e2->code(s);
+  s << endl;
+
+  if (cgen_comment)
+    s << "\t# Let's pop e1 to t1, move e2 to t2" << endl;
+  emit_addiu(SP, SP, 4, s);
+  emit_load(T1, 0, SP, s);
+  emit_move(T2, ACC, s);
+  s << endl;
+
+  if (cgen_comment)
+    s << "\t# Extract the int inside the object." << endl;
+  emit_load(T1, 3, T1, s);
+  emit_load(T2, 3, T2, s);
+  s << endl;
+
+  if (cgen_comment)
+    s << "\t# Pretend that t1 < t2" << endl;
+  emit_load_bool(ACC, BoolConst(1), s);
+  if (cgen_comment)
+    s << "\t# If t1 < t2 jumpto finish" << endl;
+  emit_bleq(T1, T2, labelnum, s);
+
+  emit_load_bool(ACC, BoolConst(0), s);
+  emit_label_def(labelnum, s);
+
+  ++labelnum;
 }
 
-void comp_class::code(ostream &s) {
+void comp_class::code(ostream &s)
+{
+  if (cgen_comment)
+  {
+    s << "\t# the 'not' operator" << endl;
+    s << "\t# First eval the bool" << endl;
+  }
+  e1->code(s);
+
+  if (cgen_comment)
+    s << "\t# Extract the int inside the bool" << endl;
+  emit_load(T1, 3, ACC, s);
+
+  if (cgen_comment)
+    s << "\t# Pretend ACC = false, then we need to construct true" << endl;
+  emit_load_bool(ACC, BoolConst(1), s);
+
+  if (cgen_comment)
+    s << "\t# If ACC = false, jumpto finish" << endl;
+  emit_beq(T1, ZERO, labelnum, s);
+
+  if (cgen_comment)
+    s << "\t# Load false" << endl;
+  emit_load_bool(ACC, BoolConst(0), s);
+
+  if (cgen_comment)
+    s << "\t# finish:" << endl;
+  emit_label_def(labelnum, s);
+
+  ++labelnum;
 }
 
-void int_const_class::code(ostream& s)  
+void int_const_class::code(ostream &s)
 {
   //
   // Need to be sure we have an IntEntry *, not an arbitrary Symbol
   //
-  emit_load_int(ACC,inttable.lookup_string(token->get_string()),s);
+  IntEntry *entry = inttable.lookup_string(token->get_string());
+  if (cgen_comment)
+  {
+    s << "\t# load int_const: ";
+    entry->code_ref(s);
+    s << " value " << token->get_string() << endl;
+  }
+  emit_load_int(ACC, entry, s);
 }
 
-void string_const_class::code(ostream& s)
+void string_const_class::code(ostream &s)
 {
-  emit_load_string(ACC,stringtable.lookup_string(token->get_string()),s);
+  StringEntry *entry = stringtable.lookup_string(token->get_string());
+  if (cgen_comment)
+  {
+    s << "\t# load string_const: ";
+    entry->code_ref(s);
+    s << " value " << token->get_string() << endl;
+  }
+  emit_load_string(ACC, entry, s);
 }
 
-void bool_const_class::code(ostream& s)
+void bool_const_class::code(ostream &s)
 {
   emit_load_bool(ACC, BoolConst(val), s);
 }
 
-void new__class::code(ostream &s) {
+void new__class::code(ostream &s)
+{
 }
 
-void isvoid_class::code(ostream &s) {
+void isvoid_class::code(ostream &s)
+{
 }
 
-void no_expr_class::code(ostream &s) {
+void no_expr_class::code(ostream &s)
+{
+  emit_move(ACC, ZERO, s);
 }
 
-void object_class::code(ostream &s) {
+void object_class::code(ostream &s)
+{
   int index;
+  if (cgen_comment)
+    s << "\t# Object " << name << endl;
   if ((index = enviroment->find_variable(name)) != -1)
   {
+    if (cgen_comment)
+      s << "\t# It is a let variable." << endl;
     emit_load(ACC, index + 1, SP, s);
   }
   else if ((index = enviroment->find_parameter(name)) != -1)
   {
+    if (cgen_comment)
+      s << "\t# It is a param." << endl;
     emit_load(ACC, index + 3, FP, s);
   }
   else if ((index = enviroment->find_attr(name)) != -1)
   {
-    emit_load(ACC, index + 1, SELF, s);
+    if (cgen_comment)
+      s << "\t# It is an attribute." << endl;
+    emit_load(ACC, index + 3, SELF, s);
   }
   else if (name == self)
   {
+    if (cgen_comment)
+      s << "\t# It is self." << endl;
     emit_move(ACC, SELF, s);
   }
   else
   {
+    if (cgen_comment)
+      s << "invalid object" << name << endl;
   }
 }
